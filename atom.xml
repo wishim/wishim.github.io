@@ -5,7 +5,7 @@
   <link href="/atom.xml" rel="self"/>
   
   <link href="https://wishim.github.io/"/>
-  <updated>2017-01-02T18:37:25.000Z</updated>
+  <updated>2017-01-16T18:12:46.000Z</updated>
   <id>https://wishim.github.io/</id>
   
   <author>
@@ -14,6 +14,44 @@
   </author>
   
   <generator uri="http://hexo.io/">Hexo</generator>
+  
+  <entry>
+    <title>Elasticsearch数据备份与恢复</title>
+    <link href="https://wishim.github.io/2017/01/17/elasticsearch-snapshot/"/>
+    <id>https://wishim.github.io/2017/01/17/elasticsearch-snapshot/</id>
+    <published>2017-01-16T18:12:46.000Z</published>
+    <updated>2017-01-16T18:12:46.000Z</updated>
+    
+    <content type="html"><![CDATA[<p>最近因为工作需求，学习并初步使用了ELK技术栈，因为开发过程中需要将生产环境的数据复制到本地环境中进行调试，所以查阅文档，了解了如何利用Elasticsearch数据的备份与恢复来实现数据迁移。<br><a id="more"></a></p>
+<h2 id="数据备份"><a href="#数据备份" class="headerlink" title="数据备份"></a>数据备份</h2><h4 id="创建快照目录"><a href="#创建快照目录" class="headerlink" title="创建快照目录"></a>创建快照目录</h4><p>在系统中创建一个用于存放Elasearch快照的目录。<br><figure class="highlight plain"><table><tr><td class="gutter"><pre><div class="line">1</div></pre></td><td class="code"><pre><div class="line">mkdir /data/els/snapshot</div></pre></td></tr></table></figure></p>
+<p>这里需要注意的是，如果当前系统用户不是运行Elasearch进程的用户，则需修改snapshot目录权限为Elasearch所属用户（假设Elasearch用户为elsearch）：<br><figure class="highlight plain"><table><tr><td class="gutter"><pre><div class="line">1</div></pre></td><td class="code"><pre><div class="line">chown -R elsearch:elsearch ./snapshot</div></pre></td></tr></table></figure></p>
+<h4 id="修改Elasearch配置"><a href="#修改Elasearch配置" class="headerlink" title="修改Elasearch配置"></a>修改Elasearch配置</h4><p>打开Elasearch的配置<code>/config/elasticsearch.yml</code>，加入如下配置：<br><figure class="highlight plain"><table><tr><td class="gutter"><pre><div class="line">1</div></pre></td><td class="code"><pre><div class="line">path.repo: [&quot;/data/els/snapshot&quot;]</div></pre></td></tr></table></figure></p>
+<h4 id="重启Elasearch"><a href="#重启Elasearch" class="headerlink" title="重启Elasearch"></a>重启Elasearch</h4><p>查询当前运行的Elasearch进程PID，使用kill命令直接关闭Elaseach。<br><figure class="highlight plain"><table><tr><td class="gutter"><pre><div class="line">1</div><div class="line">2</div><div class="line">3</div></pre></td><td class="code"><pre><div class="line">$ jps | grep Elasticsearch</div><div class="line">14542 Elasticsearch</div><div class="line">$ kill -SIGTERM 14542</div></pre></td></tr></table></figure></p>
+<h4 id="设置快照备份路径"><a href="#设置快照备份路径" class="headerlink" title="设置快照备份路径"></a>设置快照备份路径</h4><p>为Elasearch创建快照路径：<br><figure class="highlight plain"><table><tr><td class="gutter"><pre><div class="line">1</div><div class="line">2</div><div class="line">3</div><div class="line">4</div><div class="line">5</div></pre></td><td class="code"><pre><div class="line">PUT /_snapshot/backup</div><div class="line">&#123;</div><div class="line">&quot;type&quot;:&quot;fs&quot;,</div><div class="line">&quot;settings&quot;:&#123;&quot;location&quot;:&quot;/data/els/snapshot&quot;&#125;</div><div class="line">&#125;</div></pre></td></tr></table></figure></p>
+<h4 id="备份快照"><a href="#备份快照" class="headerlink" title="备份快照"></a>备份快照</h4><figure class="highlight plain"><table><tr><td class="gutter"><pre><div class="line">1</div></pre></td><td class="code"><pre><div class="line">PUT /_snapshot/backup/$filename?wait_for_completion=true&amp;pretty</div></pre></td></tr></table></figure>
+<p>执行上述调用之后，可以看到<code>/data/els/snapshot</code>目录中已经出现若干文件了，将该目录打包下载到本地即可。</p>
+<h2 id="数据恢复"><a href="#数据恢复" class="headerlink" title="数据恢复"></a>数据恢复</h2><p>首先按照数据备份步骤，也为本地的Elasearch创建快照目录。然后将数据备份步骤中下载回来的数据包解压到本地的快照目录，然后执行下面调用：<br><figure class="highlight plain"><table><tr><td class="gutter"><pre><div class="line">1</div></pre></td><td class="code"><pre><div class="line">POST /_snapshot/backup/elsearch_201701161608/_restore</div></pre></td></tr></table></figure></p>
+<p>如果调用结果返回<code>{&quot;accepted&quot;:true}</code>，则数据恢复成功。</p>
+<h2 id="填坑"><a href="#填坑" class="headerlink" title="填坑"></a>填坑</h2><p>我在恢复数据时，遇到如下错误：<br><figure class="highlight plain"><table><tr><td class="gutter"><pre><div class="line">1</div></pre></td><td class="code"><pre><div class="line">&#123;&quot;error&quot;:&#123;&quot;root_cause&quot;:[&#123;&quot;type&quot;:&quot;snapshot_restore_exception&quot;,&quot;reason&quot;:&quot;[backup:elsearch_201701161627/YjHbLk3ZTAGjHcm3HcNllA] cannot restore index [.kibana] because it&apos;s open&quot;&#125;],&quot;type&quot;:&quot;snapshot_restore_exception&quot;,&quot;reason&quot;:&quot;[backup:elsearch_201701161627/YjHbLk3ZTAGjHcm3HcNllA] cannot restore index [.kibana] because it&apos;s open&quot;&#125;,&quot;status&quot;:500&#125;</div></pre></td></tr></table></figure></p>
+<p>按照错误提示，在执行备份之前，调用下面请求，将对应index关闭后再进行备份即可。<br><figure class="highlight plain"><table><tr><td class="gutter"><pre><div class="line">1</div></pre></td><td class="code"><pre><div class="line">POST /.kibana/_close</div></pre></td></tr></table></figure></p>
+<h2 id="参考"><a href="#参考" class="headerlink" title="参考"></a>参考</h2><ol>
+<li><p>官方文档：<a href="https://www.elastic.co/guide/en/elasticsearch/reference/current/modules-snapshots.html#_shared_file_system_repository" target="_blank" rel="external">Snapshot And Restore</a></p>
+</li>
+<li><p>官方文档：<a href="https://www.elastic.co/guide/en/elasticsearch/reference/current/indices-open-close.html#indices-open-close" target="_blank" rel="external">Open / Close Index API</a></p>
+</li>
+</ol>
+]]></content>
+    
+    <summary type="html">
+    
+      &lt;p&gt;最近因为工作需求，学习并初步使用了ELK技术栈，因为开发过程中需要将生产环境的数据复制到本地环境中进行调试，所以查阅文档，了解了如何利用Elasticsearch数据的备份与恢复来实现数据迁移。&lt;br&gt;
+    
+    </summary>
+    
+    
+      <category term="Elasticsearch" scheme="https://wishim.github.io/tags/Elasticsearch/"/>
+    
+  </entry>
   
   <entry>
     <title>在CentOS 7上使用StrongSwan搭建IPSec VPN</title>
